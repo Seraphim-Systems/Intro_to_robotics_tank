@@ -26,6 +26,6 @@ Provide a clean place to incrementally implement autonomy without breaking curre
 
 ## Program-oriented architecture
 
-`challenge` now owns reusable logic/classes while executable entry scripts live in `programs/`.
+`challenge` now owns reusable logic/classes while executable entry scripts live in `Code/Server/programs/`.
 
 This keeps runtime launch points simple for future web integration without coupling mission logic to web code.

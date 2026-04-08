@@ -14,5 +14,5 @@ A future branch can call them (or import the same runner APIs) from HTTP endpoin
 From repository root:
 
 ```powershell
-python programs/run_line_ball_setup.py
+python Code/Server/programs/run_line_ball_setup.py
 ```
