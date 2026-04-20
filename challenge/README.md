@@ -54,6 +54,7 @@ Useful options:
 python -m challenge.entrypoint --obstacle-cm 15 --pickup-cm 8 --home-drop-cm 10
 python -m challenge.entrypoint --calibration-samples 20
 python -m challenge.entrypoint --skip-calibration
+python -m challenge.entrypoint --status-interval 0.5
 ```
 
 Equivalent direct-file options (when in this folder):
@@ -62,6 +63,7 @@ Equivalent direct-file options (when in this folder):
 python3 entrypoint.py --obstacle-cm 15 --pickup-cm 8 --home-drop-cm 10
 python3 entrypoint.py --calibration-samples 20
 python3 entrypoint.py --skip-calibration
+python3 entrypoint.py --status-interval 0.5
 ```
 
 Runtime commands (interactive terminal):
@@ -69,6 +71,8 @@ Runtime commands (interactive terminal):
 1. `home`: recalibrate home marker from current camera center view.
 2. `status`: print current mission state and marker calibration status.
 3. `help`: print runtime command list.
+
+`run_setup.py` also prints a periodic status line every second for basic diagnostics.
 
 ## Dependency Behavior
 

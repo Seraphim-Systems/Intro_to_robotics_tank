@@ -1,17 +1,63 @@
 from dataclasses import dataclass
+import importlib
 from pathlib import Path
 import importlib.util
+import os
+import subprocess
 import sys
 from typing import Optional
 
 from .config import MissionConfig
 
-try:
-    import cv2
-    import numpy as np
-except ImportError:  # pragma: no cover - depends on target hardware image
-    cv2 = None
-    np = None
+
+def _pip_install(package: str) -> bool:
+    commands = [
+        [sys.executable, "-m", "pip", "install", "--user", package],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--break-system-packages",
+            package,
+        ],
+    ]
+    for command in commands:
+        try:
+            subprocess.run(command, check=True)
+            return True
+        except subprocess.CalledProcessError:
+            continue
+    return False
+
+
+def _import_with_optional_auto_install(module_name: str, pip_package: str):
+    try:
+        return importlib.import_module(module_name)
+    except (ModuleNotFoundError, ImportError) as exc:
+        # If import failed for a nested dependency, do not retry pip blindly.
+        missing_name = getattr(exc, "name", module_name)
+        if missing_name and missing_name != module_name:
+            return None
+
+        auto_install = os.environ.get("CHALLENGE_AUTO_INSTALL_DEPS", "1").lower()
+        if auto_install in ("0", "false", "no"):
+            return None
+
+        print(
+            f"[challenge] Missing module '{module_name}', attempting auto-install ({pip_package})..."
+        )
+        if not _pip_install(pip_package):
+            return None
+
+        try:
+            return importlib.import_module(module_name)
+        except (ModuleNotFoundError, ImportError):
+            return None
+
+
+cv2 = _import_with_optional_auto_install("cv2", "opencv-python")
+np = _import_with_optional_auto_install("numpy", "numpy")
 
 
 @dataclass
@@ -294,4 +340,6 @@ class CarAdapter:
         if self._vision_warning_emitted:
             return
         self._vision_warning_emitted = True
-        print("[challenge] cv2/numpy unavailable; vision detection disabled")
+        print(
+            "[challenge] cv2/numpy unavailable; vision detection disabled (run: python3 Code/setup.py)"
+        )

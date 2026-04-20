@@ -53,6 +53,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Control-loop sleep in seconds",
     )
+    parser.add_argument(
+        "--status-interval",
+        type=float,
+        default=1.0,
+        help="Seconds between live status prints (0 disables periodic status)",
+    )
     return parser.parse_args()
 
 
@@ -92,6 +98,8 @@ def main() -> None:
 
     adapter = CarAdapter(config=cfg)
     mission = LineAvoidBallHomeMission(adapter=adapter, config=cfg)
+    status_interval_s = max(0.0, args.status_interval)
+    last_status_ts = 0.0
 
     print("[challenge] starting entrypoint")
     print(
@@ -102,6 +110,10 @@ def main() -> None:
             cfg.home.drop_distance_cm,
         )
     )
+    if status_interval_s > 0:
+        print(f"[challenge] status updates enabled ({status_interval_s:.1f}s)")
+    else:
+        print("[challenge] status updates disabled")
 
     adapter.start()
     try:
@@ -149,6 +161,23 @@ def main() -> None:
                     print("[challenge] runtime commands: home, status, help")
 
             mission.run_once()
+
+            now = time.monotonic()
+            if status_interval_s > 0 and now - last_status_ts >= status_interval_s:
+                sensors = adapter.read_sensors()
+                print(
+                    "[challenge][status] state=%s ir=%s distance_cm=%.1f ball=%s marker=%s carrying=%s"
+                    % (
+                        mission.state.value,
+                        sensors.infrared_code,
+                        sensors.distance_cm,
+                        int(sensors.ball_visible),
+                        int(sensors.marker_visible),
+                        int(getattr(mission, "_carrying_ball", False)),
+                    )
+                )
+                last_status_ts = now
+
             time.sleep(cfg.cycle_sleep_s)
     except KeyboardInterrupt:
         print("[challenge] stopping entrypoint")
