@@ -3,6 +3,7 @@ from collections.abc import Callable
 from challenge.program_base import BaseProgram
 from challenge.programs_impl import (
     GrandFactoryAutonomousProgram,
+    LineAvoidPickHomeProgram,
     LineBallSetupProgram,
 )
 
@@ -16,6 +17,7 @@ def available_programs() -> dict[str, ProgramFactory]:
     return {
         "grand_factory_autonomous": GrandFactoryAutonomousProgram,
         "line_ball_setup": LineBallSetupProgram,
+        "line_avoid_pick_home": LineAvoidPickHomeProgram,
     }
 
 
