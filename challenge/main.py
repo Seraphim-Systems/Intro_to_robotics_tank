@@ -19,6 +19,9 @@ if str(server_dir) not in sys.path:
 from challenge.mission import ChallengeMission, MissionConfig  # noqa: E402
 
 
+MOVEMENT_COMMANDS = {"w", "a", "s", "d", "space", " "}
+
+
 def load_car_class():
     car_path = server_dir / "car.py"
     spec = importlib.util.spec_from_file_location("challenge_server_car", car_path)
@@ -220,6 +223,31 @@ def handle_command(
     return False
 
 
+def coalesce_commands(commands: list[str]) -> list[str]:
+    """Collapse repeated movement keys so terminal key-repeat does not queue actions."""
+
+    if not commands:
+        return []
+
+    output: list[str] = []
+    pending_movement: Optional[str] = None
+    for command in commands:
+        if command in MOVEMENT_COMMANDS:
+            pending_movement = "space" if command == " " else command
+            continue
+
+        if pending_movement is not None:
+            output.append(pending_movement)
+            pending_movement = None
+
+        output.append(command)
+
+    if pending_movement is not None:
+        output.append(pending_movement)
+
+    return output
+
+
 def main() -> None:
     args = parse_args()
     cfg = MissionConfig()
@@ -251,6 +279,8 @@ def main() -> None:
             else:
                 command = read_command()
                 commands = [command] if command else []
+
+            commands = coalesce_commands(commands)
 
             manual_handled = False
             for command in commands:
