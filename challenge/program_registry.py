@@ -1,7 +1,10 @@
 from collections.abc import Callable
 
 from challenge.program_base import BaseProgram
-from challenge.programs_impl import LineBallSetupProgram
+from challenge.programs_impl import (
+    GrandFactoryAutonomousProgram,
+    LineBallSetupProgram,
+)
 
 
 ProgramFactory = Callable[[], BaseProgram]
@@ -11,6 +14,7 @@ def available_programs() -> dict[str, ProgramFactory]:
     """Program catalog that can later be exposed through an API/web layer."""
 
     return {
+        "grand_factory_autonomous": GrandFactoryAutonomousProgram,
         "line_ball_setup": LineBallSetupProgram,
     }
 
