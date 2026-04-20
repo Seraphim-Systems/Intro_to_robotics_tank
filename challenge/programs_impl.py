@@ -1,8 +1,13 @@
+from typing import TYPE_CHECKING
+
 from challenge.config import MissionConfig
-from challenge.grand_factory_autonomous import ControlConfig, GrandFactoryAutonomy
 from challenge.interfaces import CarAdapter
 from challenge.mission import AutonomousMission, LineAvoidBallHomeMission
 from challenge.program_base import BaseProgram
+
+
+if TYPE_CHECKING:
+    from challenge.grand_factory_autonomous import ControlConfig, GrandFactoryAutonomy
 
 
 class LineBallSetupProgram(BaseProgram):
@@ -65,7 +70,18 @@ class GrandFactoryAutonomousProgram(BaseProgram):
 
     name = "grand_factory_autonomous"
 
-    def __init__(self, config: ControlConfig | None = None):
+    def __init__(self, config: "ControlConfig | None" = None):
+        try:
+            from challenge.grand_factory_autonomous import (
+                ControlConfig,
+                GrandFactoryAutonomy,
+            )
+        except ModuleNotFoundError as exc:
+            raise RuntimeError(
+                f"Missing dependency '{exc.name}' for grand_factory_autonomous. "
+                "Run 'python3 Code/setup.py' to install dependencies."
+            ) from exc
+
         self.config = config or ControlConfig()
         self.mission = GrandFactoryAutonomy(self.config)
 

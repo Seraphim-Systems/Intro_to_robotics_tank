@@ -7,14 +7,56 @@ Code/Server modules for motors, servos, IR, ultrasonic, and camera.
 from __future__ import annotations
 
 import enum
+import importlib
 import importlib.util
+import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import cv2
-import numpy as np
+
+def _pip_install(package: str) -> bool:
+    commands = [
+        [sys.executable, "-m", "pip", "install", "--user", package],
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--break-system-packages",
+            package,
+        ],
+    ]
+    for command in commands:
+        try:
+            subprocess.run(command, check=True)
+            return True
+        except subprocess.CalledProcessError:
+            continue
+    return False
+
+
+def _import_or_install(module_name: str, pip_package: str):
+    try:
+        return importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        if exc.name != module_name:
+            raise
+
+        print(
+            f"[challenge] Missing module '{module_name}', attempting auto-install ({pip_package})..."
+        )
+        if not _pip_install(pip_package):
+            raise RuntimeError(
+                f"Unable to auto-install required dependency '{module_name}'. "
+                "Run 'python3 Code/setup.py' and retry."
+            ) from exc
+        return importlib.import_module(module_name)
+
+
+cv2 = _import_or_install("cv2", "opencv-python")
+np = _import_or_install("numpy", "numpy")
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

@@ -70,6 +70,13 @@ Runtime commands (interactive terminal):
 2. `status`: print current mission state and marker calibration status.
 3. `help`: print runtime command list.
 
+## Dependency Behavior
+
+1. Recommended: run `python3 Code/setup.py` once on Raspberry Pi to provision all required dependencies.
+2. `run_setup.py` and `entrypoint.py` no longer require OpenCV at import-time.
+3. `grand_factory_autonomous` will auto-attempt pip install for missing `cv2` and `numpy` when launched.
+4. If auto-install fails, run `python3 Code/setup.py` and retry.
+
 ## Program-oriented architecture
 
 `challenge` now owns reusable logic/classes while executable entry scripts live in `Code/Server/programs/`.
