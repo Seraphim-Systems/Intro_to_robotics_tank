@@ -1,7 +1,7 @@
 from collections.abc import Callable
 
 from challenge.program_base import BaseProgram
-from challenge.programs_impl import LineBallSetupProgram
+from challenge.programs_impl import LineAvoidPickHomeProgram, LineBallSetupProgram
 
 
 ProgramFactory = Callable[[], BaseProgram]
@@ -12,6 +12,7 @@ def available_programs() -> dict[str, ProgramFactory]:
 
     return {
         "line_ball_setup": LineBallSetupProgram,
+        "line_avoid_pick_home": LineAvoidPickHomeProgram,
     }
 
 

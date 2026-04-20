@@ -24,6 +24,38 @@ This is intentionally a setup, not a full autonomous implementation yet.
 
 Provide a clean place to incrementally implement autonomy without breaking current `Code/Server/main.py` behavior.
 
+## New Autonomous Entrypoint
+
+Run:
+
+```bash
+python -m challenge.entrypoint
+```
+
+Default behavior:
+
+1. Follow line using infrared sensors.
+2. Avoid obstacle when sonar distance is <= 15 cm.
+3. Detect and pick red ball (pickup stop distance defaults to 8 cm).
+4. Return to runtime-calibrated home marker.
+5. Drop ball and continue loop until interrupted (`Ctrl-C`).
+
+At startup, script prompts for home marker calibration from camera center ROI.
+
+Useful options:
+
+```bash
+python -m challenge.entrypoint --obstacle-cm 15 --pickup-cm 8 --home-drop-cm 10
+python -m challenge.entrypoint --calibration-samples 20
+python -m challenge.entrypoint --skip-calibration
+```
+
+Runtime commands (interactive terminal):
+
+1. `home`: recalibrate home marker from current camera center view.
+2. `status`: print current mission state and marker calibration status.
+3. `help`: print runtime command list.
+
 ## Program-oriented architecture
 
 `challenge` now owns reusable logic/classes while executable entry scripts live in `Code/Server/programs/`.
