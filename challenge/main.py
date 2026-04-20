@@ -3,8 +3,10 @@ import importlib.util
 from pathlib import Path
 import select
 import sys
+import termios
 import time
-from typing import Optional
+import tty
+from typing import Callable, Optional
 
 
 repo_root = Path(__file__).resolve().parents[1]
@@ -72,7 +74,115 @@ def read_command() -> Optional[str]:
     return line.rstrip("\r\n").lower()
 
 
-def handle_command(command: str, mission: ChallengeMission, cfg: MissionConfig) -> bool:
+class RuntimeConsole:
+    """Interactive console that keeps command prompt while status lines stream."""
+
+    def __init__(self) -> None:
+        self.enabled = bool(sys.stdin and not sys.stdin.closed and sys.stdin.isatty())
+        self._fd: Optional[int] = None
+        self._term_state = None
+        self._buffer = ""
+
+    def start(self) -> None:
+        if not self.enabled:
+            return
+
+        try:
+            self._fd = sys.stdin.fileno()
+            self._term_state = termios.tcgetattr(self._fd)
+            tty.setcbreak(self._fd)
+            self._redraw_prompt()
+        except Exception:
+            self.enabled = False
+            self._fd = None
+            self._term_state = None
+
+    def stop(self) -> None:
+        if self._fd is not None and self._term_state is not None:
+            try:
+                termios.tcsetattr(self._fd, termios.TCSADRAIN, self._term_state)
+            except Exception:
+                pass
+
+        if self.enabled:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+
+    def poll_commands(self) -> list[str]:
+        if not self.enabled:
+            return []
+
+        commands: list[str] = []
+        while True:
+            try:
+                readable, _, _ = select.select([sys.stdin], [], [], 0.0)
+            except (OSError, ValueError):
+                break
+
+            if not readable:
+                break
+
+            char = sys.stdin.read(1)
+            if not char:
+                break
+
+            command = self._process_char(char)
+            if command:
+                commands.append(command)
+
+        return commands
+
+    def print_status_line(self, line: str) -> None:
+        if not self.enabled:
+            print(line)
+            return
+
+        sys.stdout.write("\r\033[2K" + line + "\n")
+        self._redraw_prompt()
+
+    def print_info_line(self, line: str) -> None:
+        self.print_status_line(line)
+
+    def _process_char(self, char: str) -> Optional[str]:
+        if char == "\x03":
+            raise KeyboardInterrupt
+
+        if char in ("\r", "\n"):
+            command = self._buffer.strip().lower()
+            self._buffer = ""
+            self._redraw_prompt()
+            return command if command else None
+
+        if char in ("\x7f", "\b"):
+            if self._buffer:
+                self._buffer = self._buffer[:-1]
+                self._redraw_prompt()
+            return None
+
+        lowered = char.lower()
+        if not self._buffer and lowered in ("w", "a", "s", "d"):
+            return lowered
+        if not self._buffer and char == " ":
+            return "space"
+
+        if char.isprintable():
+            self._buffer += char
+            self._redraw_prompt()
+        return None
+
+    def _redraw_prompt(self) -> None:
+        if not self.enabled:
+            return
+        sys.stdout.write("\r\033[2K[challenge][cmd] " + self._buffer)
+        sys.stdout.flush()
+
+
+def handle_command(
+    command: str,
+    mission: ChallengeMission,
+    cfg: MissionConfig,
+    emit_line: Callable[[str], None] = print,
+) -> bool:
     step_s = max(0.10, min(0.28, cfg.loop_sleep_s * 4.0))
 
     if mission.manual_drive_pulse(command, step_s):
@@ -84,12 +194,12 @@ def handle_command(command: str, mission: ChallengeMission, cfg: MissionConfig) 
 
     if command == "home":
         mission.reset_home_anchor()
-        print("[challenge] home anchor reset")
+        emit_line("[challenge] home anchor reset")
         return True
 
     if command == "status":
         status = mission.get_status()
-        print(
+        emit_line(
             "[challenge] state=%s ir=%s distance_cm=%.1f carrying=%s home_m=%.2f balls=%s obstacles=%s"
             % (
                 status["state"],
@@ -104,7 +214,7 @@ def handle_command(command: str, mission: ChallengeMission, cfg: MissionConfig) 
         return True
 
     if command in ("help", "?"):
-        print("[challenge] commands: w a s d space home status help")
+        emit_line("[challenge] commands: w a s d space home status help")
         return True
 
     return False
@@ -122,20 +232,32 @@ def main() -> None:
 
     status_interval = max(0.0, args.status_interval)
     last_status = 0.0
+    console = RuntimeConsole()
 
     print("[challenge] main started (car.py runtime)")
     print(
         "[challenge] obstacle_cm=%.1f pickup_cm=%.1f home_radius_m=%.2f"
         % (cfg.obstacle_distance_cm, cfg.pickup_distance_cm, cfg.home_radius_m)
     )
-    print("[challenge] commands: w a s d space home status help")
+    print(
+        "[challenge] commands: w a s d (tap key), space (tap key), home/status/help + Enter"
+    )
 
     try:
+        console.start()
         while True:
-            command = read_command()
+            if console.enabled:
+                commands = console.poll_commands()
+            else:
+                command = read_command()
+                commands = [command] if command else []
+
             manual_handled = False
-            if command:
-                manual_handled = handle_command(command, mission, cfg)
+            for command in commands:
+                if handle_command(
+                    command, mission, cfg, emit_line=console.print_info_line
+                ):
+                    manual_handled = True
 
             if not manual_handled:
                 mission.step()
@@ -143,7 +265,7 @@ def main() -> None:
             now = time.monotonic()
             if status_interval > 0 and now - last_status >= status_interval:
                 status = mission.get_status()
-                print(
+                console.print_status_line(
                     "[challenge][status] state=%s ir=%s distance_cm=%.1f carrying=%s home_m=%.2f balls=%s obstacles=%s"
                     % (
                         status["state"],
@@ -159,8 +281,9 @@ def main() -> None:
 
             time.sleep(cfg.loop_sleep_s)
     except KeyboardInterrupt:
-        print("[challenge] stopping")
+        console.print_info_line("[challenge] stopping")
     finally:
+        console.stop()
         car.close()
 
 
