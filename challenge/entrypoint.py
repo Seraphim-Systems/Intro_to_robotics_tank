@@ -9,9 +9,9 @@ repo_root = Path(__file__).resolve().parents[1]
 if str(repo_root) not in sys.path:
     sys.path.insert(0, str(repo_root))
 
-from challenge.config import MissionConfig
-from challenge.interfaces import CarAdapter
-from challenge.mission import LineAvoidBallHomeMission
+from challenge.config import MissionConfig  # noqa: E402
+from challenge.interfaces import CarAdapter  # noqa: E402
+from challenge.mission import LineAvoidBallHomeMission  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -54,6 +54,18 @@ def parse_args() -> argparse.Namespace:
         help="Control-loop sleep in seconds",
     )
     parser.add_argument(
+        "--line-base-speed",
+        type=int,
+        default=None,
+        help="Base wheel speed during line-follow",
+    )
+    parser.add_argument(
+        "--line-turn-delta",
+        type=int,
+        default=None,
+        help="Left/right speed split used for line-follow turns",
+    )
+    parser.add_argument(
         "--status-interval",
         type=float,
         default=1.0,
@@ -70,6 +82,10 @@ def apply_args_to_config(args: argparse.Namespace, cfg: MissionConfig) -> None:
         cfg.home.calibration_samples = max(1, args.calibration_samples)
     if args.cycle_sleep is not None:
         cfg.cycle_sleep_s = max(0.01, args.cycle_sleep)
+    if args.line_base_speed is not None:
+        cfg.line.base_speed = max(200, args.line_base_speed)
+    if args.line_turn_delta is not None:
+        cfg.line.turn_speed_delta = max(50, args.line_turn_delta)
 
 
 def read_runtime_command() -> Optional[str]:

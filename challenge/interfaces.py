@@ -1,27 +1,86 @@
 from dataclasses import dataclass
 import importlib
-from pathlib import Path
 import importlib.util
+from pathlib import Path
 import os
+import shutil
 import subprocess
 import sys
+import time
 from typing import Optional
 
 from .config import MissionConfig
 
 
+_APT_MODULE_PACKAGES = {
+    "cv2": "python3-opencv",
+    "numpy": "python3-numpy",
+    "picamera2": "python3-picamera2",
+    "libcamera": "python3-libcamera",
+    "gpiozero": "python3-gpiozero",
+    "pigpio": "python3-pigpio",
+    "lgpio": "python3-lgpio",
+}
+
+_PIP_MODULE_PACKAGES = {
+    "cv2": "opencv-python",
+    "numpy": "numpy",
+    "rpi_hardware_pwm": "rpi-hardware-pwm",
+}
+
+
+def _is_root() -> bool:
+    try:
+        return os.geteuid() == 0
+    except AttributeError:
+        return False
+
+
+def _apt_install(package: str) -> bool:
+    apt_get = shutil.which("apt-get")
+    if apt_get is None:
+        return False
+
+    command = [apt_get, "install", "-y", package]
+    if not _is_root():
+        sudo = shutil.which("sudo")
+        if sudo is None:
+            return False
+        command = [sudo] + command
+
+    try:
+        subprocess.run(command, check=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
 def _pip_install(package: str) -> bool:
-    commands = [
-        [sys.executable, "-m", "pip", "install", "--user", package],
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--break-system-packages",
-            package,
-        ],
-    ]
+    if _is_root():
+        commands = [
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--break-system-packages",
+                package,
+            ],
+            [sys.executable, "-m", "pip", "install", package],
+        ]
+    else:
+        commands = [
+            [sys.executable, "-m", "pip", "install", "--user", package],
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--break-system-packages",
+                package,
+            ],
+        ]
+
     for command in commands:
         try:
             subprocess.run(command, check=True)
@@ -31,7 +90,11 @@ def _pip_install(package: str) -> bool:
     return False
 
 
-def _import_with_optional_auto_install(module_name: str, pip_package: str):
+def _import_with_optional_auto_install(
+    module_name: str,
+    pip_package: str,
+    apt_package: Optional[str] = None,
+):
     try:
         return importlib.import_module(module_name)
     except (ModuleNotFoundError, ImportError) as exc:
@@ -44,8 +107,18 @@ def _import_with_optional_auto_install(module_name: str, pip_package: str):
         if auto_install in ("0", "false", "no"):
             return None
 
+        if apt_package is not None:
+            print(
+                f"[challenge] Missing module '{module_name}', attempting apt install ({apt_package})..."
+            )
+            if _apt_install(apt_package):
+                try:
+                    return importlib.import_module(module_name)
+                except (ModuleNotFoundError, ImportError):
+                    pass
+
         print(
-            f"[challenge] Missing module '{module_name}', attempting auto-install ({pip_package})..."
+            f"[challenge] Missing module '{module_name}', attempting pip install ({pip_package})..."
         )
         if not _pip_install(pip_package):
             return None
@@ -56,8 +129,40 @@ def _import_with_optional_auto_install(module_name: str, pip_package: str):
             return None
 
 
-cv2 = _import_with_optional_auto_install("cv2", "opencv-python")
-np = _import_with_optional_auto_install("numpy", "numpy")
+def _install_dependency_for_module(module_name: str) -> bool:
+    auto_install = os.environ.get("CHALLENGE_AUTO_INSTALL_DEPS", "1").lower()
+    if auto_install in ("0", "false", "no"):
+        return False
+
+    apt_package = _APT_MODULE_PACKAGES.get(module_name)
+    if apt_package is not None:
+        print(
+            f"[challenge] Missing module '{module_name}', attempting apt install ({apt_package})..."
+        )
+        if _apt_install(apt_package):
+            return True
+
+    pip_package = _PIP_MODULE_PACKAGES.get(module_name)
+    if pip_package is not None:
+        print(
+            f"[challenge] Missing module '{module_name}', attempting pip install ({pip_package})..."
+        )
+        if _pip_install(pip_package):
+            return True
+
+    return False
+
+
+cv2 = _import_with_optional_auto_install(
+    "cv2",
+    "opencv-python",
+    apt_package="python3-opencv",
+)
+np = _import_with_optional_auto_install(
+    "numpy",
+    "numpy",
+    apt_package="python3-numpy",
+)
 
 
 @dataclass
@@ -96,6 +201,8 @@ class CarAdapter:
         self._stream_started = False
         self._vision_available = cv2 is not None and np is not None
         self._vision_warning_emitted = False
+        self._clamp_pick_timeout_s = 6.0
+        self._clamp_drop_timeout_s = 4.0
 
         self._ball_ranges = [
             (self.config.ball.hsv_lower_1, self.config.ball.hsv_upper_1),
@@ -105,14 +212,29 @@ class CarAdapter:
             tuple[tuple[int, int, int], tuple[int, int, int]]
         ] = []
 
+        # Keep servo idle between clamp actions to reduce startup buzzing.
+        self._release_servo_pwm()
+
     @staticmethod
     def _load_module(file_path: Path, module_name: str):
-        spec = importlib.util.spec_from_file_location(module_name, file_path)
-        if spec is None or spec.loader is None:
-            raise ImportError(f"Cannot load module from {file_path}")
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
+        # Retry once after optional dependency auto-install.
+        for _ in range(2):
+            spec = importlib.util.spec_from_file_location(module_name, file_path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"Cannot load module from {file_path}")
+
+            module = importlib.util.module_from_spec(spec)
+            try:
+                spec.loader.exec_module(module)
+                return module
+            except ModuleNotFoundError as exc:
+                missing_module = getattr(exc, "name", None)
+                if not missing_module or not _install_dependency_for_module(
+                    missing_module
+                ):
+                    raise
+
+        raise ImportError(f"Cannot load module from {file_path}")
 
     def start(self) -> None:
         if not self._stream_started:
@@ -164,14 +286,28 @@ class CarAdapter:
         self.car.servo.setServoAngle(channel, angle)
 
     def clamp_pick(self) -> None:
+        deadline = time.monotonic() + self._clamp_pick_timeout_s
         self.car.set_mode_clamp(1)
         while self.car.get_mode_clamp() == 1:
             self.car.mode_clamp()
+            if time.monotonic() >= deadline:
+                print("[challenge] clamp_pick timeout; aborting clamp cycle")
+                self.car.set_mode_clamp(0)
+                self.stop_motors()
+                break
+        self._release_servo_pwm()
 
     def clamp_drop(self) -> None:
+        deadline = time.monotonic() + self._clamp_drop_timeout_s
         self.car.set_mode_clamp(2)
         while self.car.get_mode_clamp() == 2:
             self.car.mode_clamp()
+            if time.monotonic() >= deadline:
+                print("[challenge] clamp_drop timeout; aborting clamp cycle")
+                self.car.set_mode_clamp(0)
+                self.stop_motors()
+                break
+        self._release_servo_pwm()
 
     def is_home_marker_ready(self) -> bool:
         return bool(self._home_marker_ranges)
@@ -343,3 +479,33 @@ class CarAdapter:
         print(
             "[challenge] cv2/numpy unavailable; vision detection disabled (run: python3 Code/setup.py)"
         )
+
+    def _release_servo_pwm(self) -> None:
+        servo = getattr(self.car, "servo", None)
+        if servo is None:
+            return
+
+        pwm = getattr(servo, "pwm", None)
+        if pwm is None:
+            return
+
+        # gpiozero backend: detach to stop hold torque at idle.
+        for attr in ("servo1", "servo2", "servo3"):
+            servo_obj = getattr(pwm, attr, None)
+            if servo_obj is not None and hasattr(servo_obj, "detach"):
+                try:
+                    servo_obj.detach()
+                except Exception:
+                    pass
+
+        # pigpio backend: set duty cycle to zero on known channels.
+        pigpio_handle = getattr(pwm, "PwmServo", None)
+        if pigpio_handle is not None:
+            for channel_attr in ("channel1", "channel2", "channel3"):
+                channel = getattr(pwm, channel_attr, None)
+                if channel is None:
+                    continue
+                try:
+                    pigpio_handle.set_PWM_dutycycle(channel, 0)
+                except Exception:
+                    pass

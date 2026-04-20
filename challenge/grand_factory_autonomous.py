@@ -9,6 +9,8 @@ from __future__ import annotations
 import enum
 import importlib
 import importlib.util
+import os
+import shutil
 import subprocess
 import sys
 import time
@@ -16,18 +18,58 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+def _is_root() -> bool:
+    try:
+        return os.geteuid() == 0
+    except AttributeError:
+        return False
+
+
+def _apt_install(package: str) -> bool:
+    apt_get = shutil.which("apt-get")
+    if apt_get is None:
+        return False
+
+    command = [apt_get, "install", "-y", package]
+    if not _is_root():
+        sudo = shutil.which("sudo")
+        if sudo is None:
+            return False
+        command = [sudo] + command
+
+    try:
+        subprocess.run(command, check=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
 def _pip_install(package: str) -> bool:
-    commands = [
-        [sys.executable, "-m", "pip", "install", "--user", package],
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--break-system-packages",
-            package,
-        ],
-    ]
+    if _is_root():
+        commands = [
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--break-system-packages",
+                package,
+            ],
+            [sys.executable, "-m", "pip", "install", package],
+        ]
+    else:
+        commands = [
+            [sys.executable, "-m", "pip", "install", "--user", package],
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--break-system-packages",
+                package,
+            ],
+        ]
+
     for command in commands:
         try:
             subprocess.run(command, check=True)
@@ -37,7 +79,7 @@ def _pip_install(package: str) -> bool:
     return False
 
 
-def _import_or_install(module_name: str, pip_package: str):
+def _import_or_install(module_name: str, pip_package: str, apt_package: str):
     try:
         return importlib.import_module(module_name)
     except ModuleNotFoundError as exc:
@@ -45,7 +87,16 @@ def _import_or_install(module_name: str, pip_package: str):
             raise
 
         print(
-            f"[challenge] Missing module '{module_name}', attempting auto-install ({pip_package})..."
+            f"[challenge] Missing module '{module_name}', attempting apt install ({apt_package})..."
+        )
+        if _apt_install(apt_package):
+            try:
+                return importlib.import_module(module_name)
+            except ModuleNotFoundError:
+                pass
+
+        print(
+            f"[challenge] Missing module '{module_name}', attempting pip install ({pip_package})..."
         )
         if not _pip_install(pip_package):
             raise RuntimeError(
@@ -55,8 +106,41 @@ def _import_or_install(module_name: str, pip_package: str):
         return importlib.import_module(module_name)
 
 
-cv2 = _import_or_install("cv2", "opencv-python")
-np = _import_or_install("numpy", "numpy")
+cv2 = _import_or_install("cv2", "opencv-python", "python3-opencv")
+np = _import_or_install("numpy", "numpy", "python3-numpy")
+
+
+_APT_MODULE_PACKAGES = {
+    "picamera2": "python3-picamera2",
+    "libcamera": "python3-libcamera",
+    "gpiozero": "python3-gpiozero",
+    "pigpio": "python3-pigpio",
+    "lgpio": "python3-lgpio",
+}
+
+_PIP_MODULE_PACKAGES = {
+    "rpi_hardware_pwm": "rpi-hardware-pwm",
+}
+
+
+def _install_dependency_for_module(module_name: str) -> bool:
+    apt_package = _APT_MODULE_PACKAGES.get(module_name)
+    if apt_package is not None:
+        print(
+            f"[challenge] Missing module '{module_name}', attempting apt install ({apt_package})..."
+        )
+        if _apt_install(apt_package):
+            return True
+
+    pip_package = _PIP_MODULE_PACKAGES.get(module_name)
+    if pip_package is not None:
+        print(
+            f"[challenge] Missing module '{module_name}', attempting pip install ({pip_package})..."
+        )
+        if _pip_install(pip_package):
+            return True
+
+    return False
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -66,12 +150,22 @@ if str(SERVER_DIR) not in sys.path:
 
 
 def _load_module(file_path: Path, module_name: str):
-    spec = importlib.util.spec_from_file_location(module_name, file_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Cannot load module from {file_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    # Retry once after optional dependency install.
+    for _ in range(2):
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Cannot load module from {file_path}")
+
+        module = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(module)
+            return module
+        except ModuleNotFoundError as exc:
+            missing_module = getattr(exc, "name", None)
+            if not missing_module or not _install_dependency_for_module(missing_module):
+                raise
+
+    raise ImportError(f"Cannot load module from {file_path}")
 
 
 _car_module = _load_module(SERVER_DIR / "car.py", "grand_factory_car_module")
@@ -99,8 +193,8 @@ class ControlConfig:
     obstacle_valid_max_cm: float = 120.0
 
     line_base_speed: int = 1250
-    line_turn_delta: int = 950
-    line_search_spin_speed: int = 850
+    line_turn_delta: int = 300
+    line_search_spin_speed: int = 550
     line_lost_timeout_s: float = 0.8
 
     ball_center_tolerance_px: int = 35

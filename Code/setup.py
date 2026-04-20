@@ -72,6 +72,7 @@ def get_raspberry_pi_version():
             ["cat", "/sys/firmware/devicetree/base/model"],
             capture_output=True,
             text=True,
+            check=False,
         )
         if result.returncode == 0:
             model = result.stdout.strip()
@@ -95,7 +96,7 @@ def get_raspberry_pi_version():
 def update_config_file(file_path, command, value):
     new_content = []
     command_found = False
-    with open(file_path, "r") as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
     for line in lines:
         stripped_line = line.strip()
@@ -106,7 +107,7 @@ def update_config_file(file_path, command, value):
             new_content.append(line)
     if not command_found:
         new_content.append(f"\n{command}={value}\n")
-    with open(file_path, "w") as f:
+    with open(file_path, "w", encoding="utf-8") as f:
         f.writelines(new_content)
     print(f"Updated {file_path} with '{command}={value}'")
 
@@ -114,7 +115,7 @@ def update_config_file(file_path, command, value):
 def config_camera_to_config_txt(file_path, command, value=None):
     new_content = []
     command_found = False
-    with open(file_path, "r") as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
     for line in lines:
         stripped_line = line.strip()
@@ -135,7 +136,7 @@ def config_camera_to_config_txt(file_path, command, value=None):
             new_content.append(f"\ndtoverlay={command},{value}\n")
         else:
             new_content.append(f"\ndtoverlay={command}\n")
-    with open(file_path, "w") as f:
+    with open(file_path, "w", encoding="utf-8") as f:
         f.writelines(new_content)
     value_str = f",{value}" if value else ""
     print(f"Updated {file_path} with 'dtoverlay={command}{value_str}'")
@@ -221,7 +222,7 @@ def main():
     if pi_version == 3:
         install_status["apt lgpio (pi5 only)"] = apt_install("python3-lgpio")
 
-    print("Checking Python imports used by challenge runtime...")
+    print("Checking Python imports used by robot runtime...")
     install_status["python gpiozero"] = ensure_import_only("gpiozero")
     install_status["python numpy"] = ensure_python_package("numpy", "numpy")
     install_status["python cv2"] = ensure_python_package("cv2", "opencv-python")
@@ -244,9 +245,6 @@ def main():
     if all(install_status.values()):
         print("\nAll libraries have been installed successfully.")
         config_file()
-        challenge_script = SCRIPT_DIR.parent / "challenge" / "entrypoint.py"
-        print(f"Challenge entrypoint: python3 {challenge_script}")
-        print("Or from repo root: python3 -m challenge.entrypoint")
         print("Please reboot your Raspberry Pi to complete the installation.")
     else:
         missing_libraries = [

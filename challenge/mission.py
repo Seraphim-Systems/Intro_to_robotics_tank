@@ -119,8 +119,8 @@ class AutonomousMission:
     def _handle_recover(self, sensors: SensorSnapshot) -> None:
         _ = sensors
         # Minimal recover strategy for setup.
-        self.adapter.set_wheels(-700, 700)
-        time.sleep(0.2)
+        self.adapter.set_wheels(-450, 450)
+        time.sleep(0.12)
         self.state = MissionState.FOLLOW_LINE
 
 
@@ -314,8 +314,8 @@ class LineAvoidBallHomeMission:
 
     def _handle_recover(self, sensors: SensorSnapshot) -> None:
         _ = sensors
-        self.adapter.set_wheels(-700, 700)
-        time.sleep(0.2)
+        self.adapter.set_wheels(-450, 450)
+        time.sleep(0.12)
         self.adapter.stop_motors()
         self._last_line_seen_ts = time.time()
         if self._carrying_ball:

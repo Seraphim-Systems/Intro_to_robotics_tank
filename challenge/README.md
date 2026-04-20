@@ -78,8 +78,9 @@ Runtime commands (interactive terminal):
 
 1. Recommended: run `python3 Code/setup.py` once on Raspberry Pi to provision all required dependencies.
 2. `run_setup.py` and `entrypoint.py` no longer require OpenCV at import-time.
-3. `grand_factory_autonomous` will auto-attempt pip install for missing `cv2` and `numpy` when launched.
-4. If auto-install fails, run `python3 Code/setup.py` and retry.
+3. Challenge runtime now auto-attempts dependency install for missing modules (`cv2`, `numpy`, `picamera2`, `libcamera`, `gpiozero`, `pigpio`, `lgpio`, `rpi_hardware_pwm`).
+4. Auto-install strategy is apt-first (`python3-*` packages), then pip fallback where needed.
+5. If auto-install fails, run `python3 Code/setup.py` and retry.
 
 ## Program-oriented architecture
 

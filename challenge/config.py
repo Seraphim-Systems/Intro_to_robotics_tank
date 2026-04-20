@@ -6,7 +6,7 @@ class LineFollowConfig:
     """Black-line follow tuning parameters (initial placeholders)."""
 
     base_speed: int = 1300
-    turn_speed_delta: int = 900
+    turn_speed_delta: int = 250
     lost_line_timeout_s: float = 0.8
 
 
