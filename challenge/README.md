@@ -32,6 +32,12 @@ Run:
 python -m challenge.entrypoint
 ```
 
+Or from inside this folder:
+
+```bash
+python3 entrypoint.py
+```
+
 Default behavior:
 
 1. Follow line using infrared sensors.
@@ -48,6 +54,14 @@ Useful options:
 python -m challenge.entrypoint --obstacle-cm 15 --pickup-cm 8 --home-drop-cm 10
 python -m challenge.entrypoint --calibration-samples 20
 python -m challenge.entrypoint --skip-calibration
+```
+
+Equivalent direct-file options (when in this folder):
+
+```bash
+python3 entrypoint.py --obstacle-cm 15 --pickup-cm 8 --home-drop-cm 10
+python3 entrypoint.py --calibration-samples 20
+python3 entrypoint.py --skip-calibration
 ```
 
 Runtime commands (interactive terminal):
