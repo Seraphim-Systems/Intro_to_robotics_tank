@@ -27,25 +27,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--pickup-cm",
         type=float,
-        default=8.0,
+        default=15.0,
         help="Sonar stop distance in cm before clamp pickup",
     )
     parser.add_argument(
-        "--home-drop-cm",
+        "--home-radius-m",
         type=float,
-        default=10.0,
-        help="Sonar stop distance in cm before clamp drop at home marker",
-    )
-    parser.add_argument(
-        "--calibration-samples",
-        type=int,
-        default=None,
-        help="Number of frames sampled during home marker calibration",
-    )
-    parser.add_argument(
-        "--skip-calibration",
-        action="store_true",
-        help="Skip startup home marker calibration",
+        default=0.22,
+        help="Geolocation radius in meters that counts as arriving at home drop zone",
     )
     parser.add_argument(
         "--cycle-sleep",
@@ -66,6 +55,16 @@ def parse_args() -> argparse.Namespace:
         help="Left/right speed split used for line-follow turns",
     )
     parser.add_argument(
+        "--ir-zero-lost",
+        action="store_true",
+        help="Treat IR code 0 as line-lost instead of center-line",
+    )
+    parser.add_argument(
+        "--normal-vision-steering",
+        action="store_true",
+        help="Disable inverted vision steering",
+    )
+    parser.add_argument(
         "--status-interval",
         type=float,
         default=1.0,
@@ -77,15 +76,17 @@ def parse_args() -> argparse.Namespace:
 def apply_args_to_config(args: argparse.Namespace, cfg: MissionConfig) -> None:
     cfg.obstacle.trigger_distance_cm = args.obstacle_cm
     cfg.ball.approach_stop_distance_cm = args.pickup_cm
-    cfg.home.drop_distance_cm = args.home_drop_cm
-    if args.calibration_samples is not None:
-        cfg.home.calibration_samples = max(1, args.calibration_samples)
+    cfg.geo.home_arrival_radius_m = max(0.05, args.home_radius_m)
     if args.cycle_sleep is not None:
         cfg.cycle_sleep_s = max(0.01, args.cycle_sleep)
     if args.line_base_speed is not None:
         cfg.line.base_speed = max(200, args.line_base_speed)
     if args.line_turn_delta is not None:
         cfg.line.turn_speed_delta = max(50, args.line_turn_delta)
+    if args.ir_zero_lost:
+        cfg.line.code_zero_is_center = False
+    if args.normal_vision_steering:
+        cfg.ball.invert_steering = False
 
 
 def read_runtime_command() -> Optional[str]:
@@ -119,11 +120,20 @@ def main() -> None:
 
     print("[challenge] starting entrypoint")
     print(
-        "[challenge] obstacle_cm=%.1f pickup_cm=%.1f home_drop_cm=%.1f"
+        "[challenge] obstacle_cm=%.1f pickup_cm=%.1f home_radius_m=%.2f"
         % (
             cfg.obstacle.trigger_distance_cm,
             cfg.ball.approach_stop_distance_cm,
-            cfg.home.drop_distance_cm,
+            cfg.geo.home_arrival_radius_m,
+        )
+    )
+    print(
+        "[challenge] line_base=%d turn_delta=%d ir_zero_center=%s vision_invert=%s"
+        % (
+            cfg.line.base_speed,
+            cfg.line.turn_speed_delta,
+            int(cfg.line.code_zero_is_center),
+            int(cfg.ball.invert_steering),
         )
     )
     if status_interval_s > 0:
@@ -133,45 +143,29 @@ def main() -> None:
 
     adapter.start()
     try:
-        if args.skip_calibration:
-            print("[challenge] home marker calibration skipped")
-        else:
-            print(
-                "[challenge] Place home marker at camera center, then press Enter to calibrate"
-            )
-            try:
-                input()
-            except EOFError:
-                print(
-                    "[challenge] no stdin available, continuing with automatic calibration"
-                )
-
-            calibrated = adapter.calibrate_home_marker(cfg.home.calibration_samples)
-            if calibrated:
-                print("[challenge] home marker calibrated")
-            else:
-                print(
-                    "[challenge] home marker calibration failed; fallback search remains active"
-                )
-
+        mission.reset_home_anchor()
+        print("[challenge] geolocation home anchor set at startup")
         print("[challenge] runtime commands: home, status, help")
 
         while True:
             command = read_runtime_command()
             if command:
                 if command == "home":
-                    print("[challenge] runtime home calibration requested")
-                    calibrated = adapter.calibrate_home_marker(
-                        cfg.home.calibration_samples
-                    )
-                    if calibrated:
-                        print("[challenge] home marker calibrated")
-                    else:
-                        print("[challenge] home marker calibration failed")
+                    mission.reset_home_anchor()
+                    print("[challenge] geolocation home anchor reset to current pose")
                 elif command == "status":
+                    nav = mission.get_navigation_status()
                     print(
-                        "[challenge] state=%s marker_ready=%s"
-                        % (mission.state.value, adapter.is_home_marker_ready())
+                        "[challenge] state=%s pos=(%.2f,%.2f)m heading=%.1fdeg home=%.2fm map(lines=%d obstacles=%d)"
+                        % (
+                            mission.state.value,
+                            nav["x_m"],
+                            nav["y_m"],
+                            nav["heading_deg"],
+                            nav["home_distance_m"],
+                            nav["line_points"],
+                            nav["obstacles"],
+                        )
                     )
                 elif command in ("help", "?"):
                     print("[challenge] runtime commands: home, status, help")
@@ -181,15 +175,18 @@ def main() -> None:
             now = time.monotonic()
             if status_interval_s > 0 and now - last_status_ts >= status_interval_s:
                 sensors = adapter.read_sensors()
+                nav = mission.get_navigation_status()
                 print(
-                    "[challenge][status] state=%s ir=%s distance_cm=%.1f ball=%s marker=%s carrying=%s"
+                    "[challenge][status] state=%s ir=%s distance_cm=%.1f ball=%s carrying=%s home_m=%.2f map_l=%d map_o=%d"
                     % (
                         mission.state.value,
                         sensors.infrared_code,
                         sensors.distance_cm,
                         int(sensors.ball_visible),
-                        int(sensors.marker_visible),
                         int(getattr(mission, "_carrying_ball", False)),
+                        nav["home_distance_m"],
+                        nav["line_points"],
+                        nav["obstacles"],
                     )
                 )
                 last_status_ts = now

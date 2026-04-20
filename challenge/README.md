@@ -42,34 +42,36 @@ Default behavior:
 
 1. Follow line using infrared sensors.
 2. Avoid obstacle when sonar distance is <= 15 cm.
-3. Detect and pick red ball (pickup stop distance defaults to 8 cm).
-4. Return to runtime-calibrated home marker.
+3. Detect and pick red ball (pickup stop distance defaults to 15 cm).
+4. Return to startup home anchor using dead-reckoning geolocation.
 5. Drop ball and continue loop until interrupted (`Ctrl-C`).
 
-At startup, script prompts for home marker calibration from camera center ROI.
+Home anchor is set at startup from current robot pose and can be reset at runtime.
 
 Useful options:
 
 ```bash
-python -m challenge.entrypoint --obstacle-cm 15 --pickup-cm 8 --home-drop-cm 10
-python -m challenge.entrypoint --calibration-samples 20
-python -m challenge.entrypoint --skip-calibration
+python -m challenge.entrypoint --obstacle-cm 15 --pickup-cm 15 --home-radius-m 0.22
+python -m challenge.entrypoint --line-base-speed 1100 --line-turn-delta 140
+python -m challenge.entrypoint --ir-zero-lost
+python -m challenge.entrypoint --normal-vision-steering
 python -m challenge.entrypoint --status-interval 0.5
 ```
 
 Equivalent direct-file options (when in this folder):
 
 ```bash
-python3 entrypoint.py --obstacle-cm 15 --pickup-cm 8 --home-drop-cm 10
-python3 entrypoint.py --calibration-samples 20
-python3 entrypoint.py --skip-calibration
+python3 entrypoint.py --obstacle-cm 15 --pickup-cm 15 --home-radius-m 0.22
+python3 entrypoint.py --line-base-speed 1100 --line-turn-delta 140
+python3 entrypoint.py --ir-zero-lost
+python3 entrypoint.py --normal-vision-steering
 python3 entrypoint.py --status-interval 0.5
 ```
 
 Runtime commands (interactive terminal):
 
-1. `home`: recalibrate home marker from current camera center view.
-2. `status`: print current mission state and marker calibration status.
+1. `home`: reset geolocation home anchor to current pose.
+2. `status`: print current mission/nav state and map counters.
 3. `help`: print runtime command list.
 
 `run_setup.py` also prints a periodic status line every second for basic diagnostics.

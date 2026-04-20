@@ -8,6 +8,7 @@ class LineFollowConfig:
     base_speed: int = 1300
     turn_speed_delta: int = 250
     lost_line_timeout_s: float = 0.8
+    code_zero_is_center: bool = True
 
 
 @dataclass
@@ -20,6 +21,9 @@ class ObstacleAvoidConfig:
     turn_left_speed: int = -1100
     turn_right_speed: int = 1100
     turn_duration_s: float = 0.35
+    bypass_speed: int = 900
+    bypass_duration_s: float = 0.45
+    return_turn_duration_s: float = 0.30
     settle_duration_s: float = 0.15
 
 
@@ -35,13 +39,18 @@ class BallDetectConfig:
     min_contour_area_px: int = 500
     min_radius_px: float = 12.0
     center_tolerance_px: int = 30
-    approach_speed: int = 900
-    steer_speed_delta: int = 450
-    search_spin_speed: int = 650
+    approach_speed: int = 520
+    steer_speed_delta: int = 220
+    search_spin_speed: int = 500
     lost_target_timeout_s: float = 1.0
-    approach_stop_distance_cm: float = 10.0
+    approach_stop_distance_cm: float = 15.0
+    approach_slowdown_distance_cm: float = 40.0
+    approach_slow_speed: int = 420
+    approach_final_distance_cm: float = 24.0
+    approach_final_speed: int = 300
     valid_distance_min_cm: float = 3.0
     valid_distance_max_cm: float = 80.0
+    invert_steering: bool = True
 
 
 @dataclass
@@ -63,6 +72,7 @@ class HomeMarkerConfig:
     drop_distance_cm: float = 10.0
     valid_distance_min_cm: float = 3.0
     valid_distance_max_cm: float = 100.0
+    invert_steering: bool = True
 
 
 @dataclass
@@ -75,6 +85,20 @@ class ZoneConfig:
 
 
 @dataclass
+class GeoNavConfig:
+    """Dead-reckoning geolocation and lightweight map controls."""
+
+    duty_to_mps: float = 0.00022
+    wheel_base_m: float = 0.16
+    home_arrival_radius_m: float = 0.22
+    heading_tolerance_rad: float = 0.28
+    obstacle_block_radius_m: float = 0.25
+    obstacle_memory_s: float = 20.0
+    line_sample_stride_m: float = 0.05
+    max_map_points: int = 300
+
+
+@dataclass
 class MissionConfig:
     """Top-level mission configuration."""
 
@@ -83,4 +107,5 @@ class MissionConfig:
     ball: BallDetectConfig = field(default_factory=BallDetectConfig)
     home: HomeMarkerConfig = field(default_factory=HomeMarkerConfig)
     zone: ZoneConfig = field(default_factory=ZoneConfig)
+    geo: GeoNavConfig = field(default_factory=GeoNavConfig)
     cycle_sleep_s: float = 0.05
