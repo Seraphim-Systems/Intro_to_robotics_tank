@@ -40,11 +40,12 @@ python3 entrypoint.py
 
 Default behavior:
 
-1. Follow line using infrared sensors.
+1. Follow line continuously (uses legacy `Code/Server/car.py` line-follow step by default).
 2. Avoid obstacle when sonar distance is <= 15 cm.
 3. Detect and pick red ball (pickup stop distance defaults to 15 cm).
 4. Return to startup home anchor using dead-reckoning geolocation.
 5. Drop ball and continue loop until interrupted (`Ctrl-C`).
+6. If line is not detected, crawl forward slowly instead of stopping.
 
 Home anchor is set at startup from current robot pose and can be reset at runtime.
 

@@ -9,6 +9,8 @@ class LineFollowConfig:
     turn_speed_delta: int = 250
     lost_line_timeout_s: float = 0.8
     code_zero_is_center: bool = True
+    use_car_mode_infrared: bool = True
+    lost_line_crawl_speed: int = 260
 
 
 @dataclass
@@ -51,6 +53,7 @@ class BallDetectConfig:
     valid_distance_min_cm: float = 3.0
     valid_distance_max_cm: float = 80.0
     invert_steering: bool = True
+    pre_open_clamp_before_pick: bool = True
 
 
 @dataclass

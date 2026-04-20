@@ -284,6 +284,28 @@ class LineAvoidBallHomeMission:
             self.state = HomeCycleState.APPROACH_BALL
             return
 
+        if self._line_is_lost(sensors.infrared_code):
+            # Keep crawling slowly instead of freezing/spinning when line is not detected.
+            crawl = self.config.line.lost_line_crawl_speed
+            self._drive(crawl, crawl)
+            return
+
+        if (
+            sensors.infrared_code == 0
+            and self.config.line.code_zero_is_center
+            and not self.config.line.use_car_mode_infrared
+        ):
+            self._drive(self.config.line.base_speed, self.config.line.base_speed)
+            self._last_line_seen_ts = time.time()
+            return
+
+        if self.config.line.use_car_mode_infrared:
+            left, right = self.adapter.line_follow_car_step(allow_legacy_pickup=False)
+            self._cmd_left = int(left)
+            self._cmd_right = int(right)
+            self._last_line_seen_ts = time.time()
+            return
+
         if self._apply_line_follow_drive(sensors.infrared_code):
             self._last_line_seen_ts = time.time()
             return
@@ -337,6 +359,9 @@ class LineAvoidBallHomeMission:
     def _handle_pick_ball(self, sensors: SensorSnapshot) -> None:
         _ = sensors
         self._stop_drive()
+        if self.config.ball.pre_open_clamp_before_pick:
+            self.adapter.clamp_drop()
+            time.sleep(0.10)
         self.adapter.clamp_pick()
         self._carrying_ball = True
         self.state = HomeCycleState.RETURN_HOME
@@ -500,6 +525,13 @@ class LineAvoidBallHomeMission:
         if infrared_code == 0 and not self.config.line.code_zero_is_center:
             return False
         return infrared_code in (0, 1, 2, 3, 4, 5, 6)
+
+    def _line_is_lost(self, infrared_code: int) -> bool:
+        if infrared_code == 7:
+            return True
+        if infrared_code == 0 and not self.config.line.code_zero_is_center:
+            return True
+        return False
 
     def _path_to_home_blocked(self) -> bool:
         if self._distance_to_home() < 0.4:

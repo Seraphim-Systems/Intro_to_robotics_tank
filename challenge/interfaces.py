@@ -285,6 +285,37 @@ class CarAdapter:
     def move_servo(self, channel: str, angle: int) -> None:
         self.car.servo.setServoAngle(channel, angle)
 
+    def line_follow_car_step(
+        self, allow_legacy_pickup: bool = False
+    ) -> tuple[int, int]:
+        """Run one legacy line-follow step from car.py and report inferred wheel command."""
+        infrared_code = self.car.infrared.read_all_infrared()
+        inferred_left = 0
+        inferred_right = 0
+
+        if infrared_code == 2:
+            inferred_left, inferred_right = 1200, 1200
+        elif infrared_code == 4:
+            inferred_left, inferred_right = -1500, 2500
+        elif infrared_code == 6:
+            inferred_left, inferred_right = -2000, 4000
+        elif infrared_code == 1:
+            inferred_left, inferred_right = 2500, -1500
+        elif infrared_code == 3:
+            inferred_left, inferred_right = 4000, -2000
+        elif infrared_code == 7:
+            inferred_left, inferred_right = 0, 0
+
+        previous_flag = getattr(self.car, "infrared_run_stop", False)
+        try:
+            if not allow_legacy_pickup:
+                self.car.infrared_run_stop = True
+            self.car.mode_infrared()
+        finally:
+            self.car.infrared_run_stop = previous_flag
+
+        return inferred_left, inferred_right
+
     def clamp_pick(self) -> None:
         deadline = time.monotonic() + self._clamp_pick_timeout_s
         self.car.set_mode_clamp(1)
